@@ -1,6 +1,8 @@
 # 5-stage-pipline-RV32IMzicsr
 
+## Architecture
 
+![5-stage-pipe.png](doc/5-stage-pipe.png)
 
 ## CSR
 
