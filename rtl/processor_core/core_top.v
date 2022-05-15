@@ -244,7 +244,7 @@ branch_predictor #(
     .branch_ex_next_pc       ( ex_branch_next_pc                  ),
     .branch_miss             ( ex_branch_miss                     ),
     .pc_in                   ( if_pc                              ),
-    .ctrl_stall              ( ctrl_stall                         ),
+    .ctrl_stall              ( ctrl_stall[0]                      ),
 
     .branch_predict_pc_out   ( branch_predict_pc                  ),
     .branch_taken_out        ( branch_taken                       )

@@ -107,6 +107,8 @@ wire    is_itype    = opcode == `OPCODE_ITYPE;
 wire    is_csr      = opcode == `OPCODE_CSR;
 wire    is_branch   = (opcode==`OPCODE_JAL) || (opcode==`OPCODE_JALR) || (opcode==`OPCODE_BRANCH);   
 
+wire    [4:0]   rs1_addr = inst[19:15];
+
 wire    [WIDTH-1:0] pc_add_4    = pc + 32'd4;
 wire    [WIDTH-1:0] pc_add_imm  = pc + imm;
 
@@ -290,13 +292,48 @@ always @(*) begin
                 jump_out                = pc_add_4;
                 branch_ex_next_pc_out   = alu_out;
                 branch_ex_taken_out     = 1'b1;
-                branch_ex_jump_out      = 1'b1; // jump/call
+
+                // JAL push RAS when rd=x1/x5.
+                if( (rd_addr == 5'b00001) || (rd_addr == 5'b00101) ) begin
+                    branch_ex_call_out = 1'b1;
+                end else begin
+                    branch_ex_jump_out = 1'b1;
+                end
+
             end
             `INST_JALR: begin
                 jump_out                = pc_add_4;
                 branch_ex_next_pc_out   = alu_out;
                 branch_ex_taken_out     = 1'b1;
-                branch_ex_jump_out      = 1'b1; // jump/call/ret
+            
+                // JALR instructions should push/pop a RAS as shown in the Table
+                //    ------------------------------------------------
+                //    rd    |   rs1    | rs1=rd  |   RAS action
+                //    !link |   !link  | -       |   none
+                //    !link |   link   | -       |   pop
+                //    link  |   !link  | -       |   push
+                //    link  |   link   | 0       |   push and pop
+                //    link  |   link   | 1       |   push
+                // ------------------------------------------------ */
+                if(rd_addr == 5'b00001 || rd_addr == 5'b00101) begin           // rd is link reg
+                    if(rs1_addr == 5'b00001 || rs1_addr == 5'b00101) begin         // rs1 is link reg
+                        if(rd_addr == rs1_addr) begin                                  // rd==rs1
+                            branch_ex_call_out = 1'b1;                                     // push
+                        end else begin                                                 // rd!=rs1
+                            branch_ex_call_out = 1'b1;                                     // push and pop
+                            branch_ex_ret_out = 1'b1;
+                        end
+                    end else begin                                                 // rs1 is not link reg
+                        branch_ex_call_out = 1'b1;                                     // push
+                    end 
+                end else begin                                                 //rd is not link reg
+                    if(rs1_addr == 5'b00001 || rs1_addr == 5'b00101) begin         // rs1 is link reg
+                        branch_ex_ret_out = 1'b1;                                      // pop
+                    end else begin                                                 //rs1 is not link reg
+                        branch_ex_jump_out = 1'b1;                                     // none
+                    end
+                end 
+
             end
             `INST_BEQ: begin
                 branch_ex_next_pc_out   = pc_add_imm;

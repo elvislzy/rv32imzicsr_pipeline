@@ -203,20 +203,67 @@ end
 // 
 // 
 ///////////////////////////////////////////////////////////////
+wire                    ras_call = btb_match & btb_call;
+wire                    ras_ret  = btb_match & btb_ret;
 
+reg     [WIDTH-1:0]     ras_list [RAS_ENTRIES-1:0];
 
+// ras index derive from ex
+reg     [RAS_WIDTH-1:0] ras_index;
 
+always @(posedge clk or negedge rst_n) begin
+    if(!rst_n) begin
+        ras_index       <= 'd0;
+    end
+    else begin
+        if(branch_ex_req & branch_ex_call) begin
+            ras_index   <= ras_index + 1'b1;
+        end
+        else if(branch_ex_req & branch_ex_ret) begin
+            ras_index   <= ras_index - 1'b1;
+        end
+    end
+end
+
+// predicted ras index
+reg     [RAS_WIDTH-1:0] ras_predict_index;
+
+integer q;
+always @(posedge clk or negedge rst_n) begin
+    if(!rst_n) begin
+        for(q=0;q<RAS_ENTRIES;q=q+1) begin
+            ras_list[q]     <= 'd0;
+        end
+        ras_predict_index   <= 'd0;
+    end
+    else begin
+        // miss predict
+        if(branch_miss & branch_ex_req & branch_ex_call) begin      // miss call 
+            ras_list[ras_index+1'b1]    <= branch_ex_pc + 4'd32;        // write true ret address
+            ras_predict_index           <= ras_index + 1'b1;
+        end
+        else if(branch_miss & branch_ex_req & branch_ex_ret) begin  // miss ret
+            ras_predict_index           <= ras_index - 1'b1;
+        end
+        // match at if, start predict 
+        else if(ras_call & !ctrl_stall) begin                       // match call
+            ras_list[ras_predict_index+1'b1]    <= pc_in + 32'd4;       // write ret address
+            ras_predict_index                   <= ras_predict_index + 1'b1;
+        end
+        else if(ras_ret & !ctrl_stall) begin                        // match ret
+            ras_predict_index                   <= ras_predict_index - 1'b1;
+        end
+    end
+end
+
+wire ras_predict_pc = ras_list[ras_predict_index];
 
 ///////////////////////////////////////////////////////////////
 // out
 ///////////////////////////////////////////////////////////////
 assign branch_taken_out = (btb_match & (btb_call|btb_jump|btb_ret|bht_pred_taken)) ? 1'b1 : 1'b0;
-assign branch_predict_pc_out = (btb_match & (btb_call|btb_jump|btb_ret|bht_pred_taken)) ? btb_target_pc : pc_in + 32'd4;
-
-
-
-
-
+assign branch_predict_pc_out = ras_ret ? ras_predict_pc : (btb_match & (btb_call|btb_jump|btb_ret|bht_pred_taken)) 
+                             ? btb_target_pc : pc_in + 32'd4;
 
 
 endmodule
